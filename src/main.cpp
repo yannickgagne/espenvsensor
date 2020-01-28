@@ -39,13 +39,9 @@ void saveConfigCallback () {
 char message_buff[100];
 
 long lastMsg = 0;   //Horodatage du dernier message publié sur MQTT
-long lastRecu = 0;
 bool debug = true;  //Affiche sur la console si True
 
 #define DHTPIN 4    // Pin sur lequel est branché le DHT
-
-// Dé-commentez la ligne qui correspond à votre capteur 
-//#define DHTTYPE DHT11       // DHT 11 
 #define DHTTYPE DHT22         // DHT 22  (AM2302)
 
 //Création des objets
@@ -56,9 +52,6 @@ PubSubClient client(espClient);
 void setup() {
   Serial.begin(115200);
   
-  //clean FS, for testing
-  //SPIFFS.format();
-
   //read configuration from FS json
   Serial.println("mounting FS...");
 
@@ -89,7 +82,7 @@ void setup() {
   } else {
     Serial.println("failed to mount FS");
   }
-  //end read
+  //end read config json
   
   WiFiManagerParameter custom_output("output", "output", output, 2);
 
@@ -100,32 +93,18 @@ void setup() {
   //set config save notify callback
   wifiManager.setSaveConfigCallback(saveConfigCallback);
   
-  // set custom ip for portal
-  //wifiManager.setAPConfig(IPAddress(10,0,1,1), IPAddress(10,0,1,1), IPAddress(255,255,255,0));
-
   //add all your parameters here
   wifiManager.addParameter(&custom_output);
   
-  // Uncomment and run it once, if you want to erase all the stored information
-  //
+  //Uncomment and run it once, if you want to erase all the stored information
   //wifiManager.resetSettings();
-
-  //set minimu quality of signal so it ignores AP's under that quality
-  //defaults to 8%
-  //wifiManager.setMinimumSignalQuality();
-  
-  //sets timeout until configuration portal gets turned off
-  //useful to make it all retry or go to sleep
-  //in seconds
-  //wifiManager.setTimeout(120);
 
   // fetches ssid and pass from eeprom and tries to connect
   // if it does not connect it starts an access point with the specified name
-  // here  "AutoConnectAP"
-  // and goes into a blocking loop awaiting configuration
-  wifiManager.autoConnect("AutoConnectAP");
+  // here  "AutoConnectAP" and goes into a blocking loop awaiting configuration
+  //wifiManager.autoConnect("AutoConnectAP");
   // or use this for auto generated name ESP + ChipID
-  //wifiManager.autoConnect();
+  wifiManager.autoConnect();
   
   // if you get here you have connected to the WiFi
   Serial.println("Connected.");
@@ -180,6 +159,7 @@ void loop() {
   if (!client.connected()) {
     reconnect();
   }
+  //This should be called regularly to allow the client to process incoming messages and maintain its connection to the server.
   client.loop();
 
   long now = millis();
@@ -191,14 +171,11 @@ void loop() {
     // Lecture de la température en Celcius
     float t = dht.readTemperature();
 
-    //Inutile d'aller plus loin si le capteur ne renvoi rien
-    /*
     if ( isnan(t) || isnan(h)) {
       Serial.println("Echec de lecture ! Verifiez votre capteur DHT");
       return;
     }
-    */
-  
+
     if ( debug ) {
       Serial.print("Temperature : ");
       Serial.print(t);
@@ -207,8 +184,5 @@ void loop() {
     }  
     client.publish(temperature_topic, String(t).c_str(), true);   //Publie la température sur le topic temperature_topic
     client.publish(humidity_topic, String(h).c_str(), true);      //Et l'humidité
-  }
-  if (now - lastRecu > 100 ) {
-    lastRecu = now;
   }
 }
