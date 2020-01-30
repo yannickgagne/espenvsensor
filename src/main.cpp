@@ -17,14 +17,13 @@
 // Set web server port number to 80
 //WiFiServer server(80);
 
-// Variable to store the HTTP request
-String header;
-
-// Auxiliar variables to store the current output state
-String outputState = "off";
-
 // Assign output variables to GPIO pins
-char output[2] = "5";
+char mqtt_server_ip[40];
+char mqtt_server_port[10];
+char mqtt_server_user[40];
+char mqtt_server_pass[40];
+char mqtt_temp_topic[60];
+char mqtt_humi_topic[60];
 
 //flag for saving data
 bool shouldSaveConfig = false;
@@ -41,6 +40,7 @@ char message_buff[100];
 long lastMsg = 0;   //Horodatage du dernier message publié sur MQTT
 bool debug = true;  //Affiche sur la console si True
 
+#define BUILTINLED 2 // Pin of blue led on esp board
 #define DHTPIN 4    // Pin sur lequel est branché le DHT
 #define DHTTYPE DHT22         // DHT 22  (AM2302)
 
@@ -73,7 +73,12 @@ void setup() {
         json.printTo(Serial);
         if (json.success()) {
           Serial.println("\nparsed json");
-          strcpy(output, json["output"]);
+          strcpy(mqtt_server_ip, json["mqtt_server_ip"]);
+          strcpy(mqtt_server_port, json["mqtt_server_port"]);
+          strcpy(mqtt_server_user, json["mqtt_server_user"]);
+          strcpy(mqtt_server_pass, json["mqtt_server_pass"]);
+          strcpy(mqtt_temp_topic, json["mqtt_temp_topic"]);
+          strcpy(mqtt_humi_topic, json["mqtt_humi_topic"]);
         } else {
           Serial.println("failed to load json config");
         }
@@ -84,7 +89,12 @@ void setup() {
   }
   //end read config json
   
-  WiFiManagerParameter custom_output("output", "output", output, 2);
+  WiFiManagerParameter custom_mqtt_server_ip("mqtt_server_ip", "MQTT Server IP", mqtt_server_ip, 40);
+  WiFiManagerParameter custom_mqtt_server_port("mqtt_server_port", "MQTT Server Port", mqtt_server_port, 10);
+  WiFiManagerParameter custom_mqtt_server_user("mqtt_server_user", "MQTT Server Username", mqtt_server_user, 40);
+  WiFiManagerParameter custom_mqtt_server_pass("mqtt_server_pass", "MQTT Server Password", mqtt_server_pass, 40);
+  WiFiManagerParameter custom_mqtt_temp_topic("mqtt_temp_topic", "MQTT Temperature Topic", mqtt_temp_topic, 60);
+  WiFiManagerParameter custom_mqtt_humi_topic("mqtt_humi_topic", "MQTT Humidity Topic", mqtt_humi_topic, 60);
 
   // WiFiManager
   // Local intialization. Once its business is done, there is no need to keep it around
@@ -94,7 +104,12 @@ void setup() {
   wifiManager.setSaveConfigCallback(saveConfigCallback);
   
   //add all your parameters here
-  wifiManager.addParameter(&custom_output);
+  wifiManager.addParameter(&custom_mqtt_server_ip);
+  wifiManager.addParameter(&custom_mqtt_server_port);
+  wifiManager.addParameter(&custom_mqtt_server_user);
+  wifiManager.addParameter(&custom_mqtt_server_pass);
+  wifiManager.addParameter(&custom_mqtt_temp_topic);
+  wifiManager.addParameter(&custom_mqtt_humi_topic);
   
   //Uncomment and run it once, if you want to erase all the stored information
   //wifiManager.resetSettings();
@@ -109,14 +124,24 @@ void setup() {
   // if you get here you have connected to the WiFi
   Serial.println("Connected.");
   
-  strcpy(output, custom_output.getValue());
+  strcpy(mqtt_server_ip, custom_mqtt_server_ip.getValue());
+  strcpy(mqtt_server_port, custom_mqtt_server_port.getValue());
+  strcpy(mqtt_server_user, custom_mqtt_server_user.getValue());
+  strcpy(mqtt_server_pass, custom_mqtt_server_pass.getValue());
+  strcpy(mqtt_temp_topic, custom_mqtt_temp_topic.getValue());
+  strcpy(mqtt_humi_topic, custom_mqtt_humi_topic.getValue());
 
   //save the custom parameters to FS
   if (shouldSaveConfig) {
     Serial.println("saving config");
     DynamicJsonBuffer jsonBuffer;
     JsonObject& json = jsonBuffer.createObject();
-    json["output"] = output;
+    json["mqtt_server_ip"] = mqtt_server_ip;
+    json["mqtt_server_port"] = mqtt_server_port;
+    json["mqtt_server_user"] = mqtt_server_user;
+    json["mqtt_server_pass"] = mqtt_server_pass;
+    json["mqtt_temp_topic"] = mqtt_temp_topic;
+    json["mqtt_humi_topic"] = mqtt_humi_topic;
 
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile) {
@@ -130,13 +155,22 @@ void setup() {
   }
 
   // Initialize the output variables as outputs
-  pinMode(atoi(output), OUTPUT);
-  // Set outputs to LOW
-  digitalWrite(atoi(output), LOW);;
+  pinMode(BUILTINLED, OUTPUT);
+  
+  digitalWrite(BUILTINLED, HIGH);
 
-  client.setServer(mqtt_server, 9001);    //Configuration de la connexion au serveur MQTT
+  client.setServer(mqtt_server_ip, atoi(mqtt_server_port));    //Configuration de la connexion au serveur MQTT
 
   dht.begin();
+}
+
+//Flash blue led
+void flash_bled() {
+  for (size_t i = 0; i < 10; i++)
+  {
+    digitalWrite(BUILTINLED, !digitalRead(BUILTINLED));
+    delay(20);
+  }  
 }
 
 //Reconnexion
@@ -144,7 +178,7 @@ void reconnect() {
   //Boucle jusqu'à obtenur une reconnexion
   while (!client.connected()) {
     Serial.print("Connexion au serveur MQTT...");
-    if (client.connect("ESP8266Client", mqtt_user, mqtt_password)) {
+    if (client.connect("ESP8266Client", mqtt_server_user, mqtt_server_pass)) {
       Serial.println("OK");
     } else {
       Serial.print("KO, erreur : ");
@@ -165,6 +199,7 @@ void loop() {
   long now = millis();
   //Envoi d'un message par minute
   if (now - lastMsg > 1000 * 10) {
+    flash_bled();
     lastMsg = now;
     //Lecture de l'humidité ambiante
     float h = dht.readHumidity();
@@ -182,7 +217,7 @@ void loop() {
       Serial.print(" | Humidite : ");
       Serial.println(h);
     }  
-    client.publish(temperature_topic, String(t).c_str(), true);   //Publie la température sur le topic temperature_topic
-    client.publish(humidity_topic, String(h).c_str(), true);      //Et l'humidité
+    client.publish(mqtt_temp_topic, String(t).c_str(), true);   //Publie la température sur le topic temperature_topic
+    client.publish(mqtt_humi_topic, String(h).c_str(), true);      //Et l'humidité
   }
 }
