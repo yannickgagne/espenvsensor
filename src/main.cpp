@@ -194,6 +194,7 @@ void setup() {
   }
 
   // Initialize the output variables as outputs
+  pinMode(16, WAKEUP_PULLUP);
   pinMode(BUILTINLED, OUTPUT);
   
   digitalWrite(BUILTINLED, HIGH);
