@@ -14,6 +14,23 @@
 #define temperature_topic "sensor01/temperature"  //Topic température
 #define humidity_topic "sensor01/humidity"        //Topic humidité
 
+#define BUILTINLED 2 // Pin of blue led on esp board
+#define DHTPIN 4    // Pin sur lequel est branché le DHT
+#define DHTTYPE DHT22         // DHT 22  (AM2302)
+
+#define SLEEP_PIN 5
+
+//Buffer qui permet de décoder les messages MQTT reçus
+char message_buff[100];
+
+long lastMsg = 0;   //Horodatage du dernier message publié sur MQTT
+bool debug = true;  //Affiche sur la console si True
+
+//Création des objets
+DHT dht(DHTPIN, DHTTYPE);     
+WiFiClient espClient;
+PubSubClient client(espClient);
+
 // Set web server port number to 80
 //WiFiServer server(80);
 
@@ -34,23 +51,45 @@ void saveConfigCallback () {
   shouldSaveConfig = true;
 }
 
-//Buffer qui permet de décoder les messages MQTT reçus
-char message_buff[100];
+//Flash blue led when loop starts
+void flash_start() {
+  for (size_t i = 0; i < 10; i++)
+  {
+    digitalWrite(BUILTINLED, !digitalRead(BUILTINLED));
+    delay(20);
+  }  
+}
 
-long lastMsg = 0;   //Horodatage du dernier message publié sur MQTT
-bool debug = true;  //Affiche sur la console si True
+//Flash blue led when loop ends
+void flash_end() {
+  for (size_t i = 0; i < 6; i++)
+  {
+    digitalWrite(BUILTINLED, !digitalRead(BUILTINLED));
+    delay(80);
+  }  
+}
 
-#define BUILTINLED 2 // Pin of blue led on esp board
-#define DHTPIN 4    // Pin sur lequel est branché le DHT
-#define DHTTYPE DHT22         // DHT 22  (AM2302)
-
-//Création des objets
-DHT dht(DHTPIN, DHTTYPE);     
-WiFiClient espClient;
-PubSubClient client(espClient);
+//Reconnexion
+void reconnect() {
+  //Boucle jusqu'à obtenur une reconnexion
+  while (!client.connected()) {
+    Serial.print("Connexion au serveur MQTT...");
+    if (client.connect("ESP8266Client", mqtt_server_user, mqtt_server_pass)) {
+      Serial.println("OK");
+    } else {
+      Serial.print("KO, erreur : ");
+      Serial.print(client.state());
+      Serial.println(" On attend 5 secondes avant de recommencer");
+      delay(5000);
+    }
+  }
+}
 
 void setup() {
   Serial.begin(115200);
+
+  // wait for Serial to initialize
+  while (!Serial) { }  
   
   //read configuration from FS json
   Serial.println("mounting FS...");
@@ -162,62 +201,40 @@ void setup() {
   client.setServer(mqtt_server_ip, atoi(mqtt_server_port));    //Configuration de la connexion au serveur MQTT
 
   dht.begin();
-}
 
-//Flash blue led
-void flash_bled() {
-  for (size_t i = 0; i < 10; i++)
-  {
-    digitalWrite(BUILTINLED, !digitalRead(BUILTINLED));
-    delay(20);
-  }  
-}
-
-//Reconnexion
-void reconnect() {
-  //Boucle jusqu'à obtenur une reconnexion
-  while (!client.connected()) {
-    Serial.print("Connexion au serveur MQTT...");
-    if (client.connect("ESP8266Client", mqtt_server_user, mqtt_server_pass)) {
-      Serial.println("OK");
-    } else {
-      Serial.print("KO, erreur : ");
-      Serial.print(client.state());
-      Serial.println(" On attend 5 secondes avant de recommencer");
-      delay(5000);
-    }
-  }
-}
-
-void loop() {
+  // WORK START
+  flash_start();
   if (!client.connected()) {
     reconnect();
   }
   //This should be called regularly to allow the client to process incoming messages and maintain its connection to the server.
   client.loop();
 
-  long now = millis();
-  //Envoi d'un message par minute
-  if (now - lastMsg > 1000 * 10) {
-    flash_bled();
-    lastMsg = now;
-    //Lecture de l'humidité ambiante
-    float h = dht.readHumidity();
-    // Lecture de la température en Celcius
-    float t = dht.readTemperature();
+  //Lecture de l'humidité ambiante
+  float h = dht.readHumidity();
+  // Lecture de la température en Celcius
+  float t = dht.readTemperature();
 
-    if ( isnan(t) || isnan(h)) {
-      Serial.println("Echec de lecture ! Verifiez votre capteur DHT");
-      return;
-    }
-
-    if ( debug ) {
-      Serial.print("Temperature : ");
-      Serial.print(t);
-      Serial.print(" | Humidite : ");
-      Serial.println(h);
-    }  
-    client.publish(mqtt_temp_topic, String(t).c_str(), true);   //Publie la température sur le topic temperature_topic
-    client.publish(mqtt_humi_topic, String(h).c_str(), true);      //Et l'humidité
+  if ( isnan(t) || isnan(h)) {
+    Serial.println("Echec de lecture ! Verifiez votre capteur DHT");
+    return;
   }
+
+  if ( debug ) {
+    Serial.print("Temperature : ");
+    Serial.print(t);
+    Serial.print(" | Humidite : ");
+    Serial.println(h);
+  }  
+
+  client.publish(mqtt_temp_topic, String(t).c_str(), true);   //Publie la température sur le topic temperature_topic
+  client.publish(mqtt_humi_topic, String(h).c_str(), true);      //Et l'humidité
+  
+  flash_end();
+  //goto deep sleep for 5 minutes
+  ESP.deepSleep(3e8);
+  // WORK END
+}
+
+void loop() {
 }
