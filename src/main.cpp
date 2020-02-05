@@ -89,7 +89,13 @@ void setup() {
   Serial.begin(115200);
 
   // wait for Serial to initialize
-  while (!Serial) { }  
+  //while (!Serial) { }
+  delay(3500);
+
+  // Initialize the output variables as outputs
+  pinMode(16, WAKEUP_PULLUP);
+  pinMode(BUILTINLED, OUTPUT);
+  digitalWrite(BUILTINLED, HIGH);  
   
   //read configuration from FS json
   Serial.println("mounting FS...");
@@ -193,18 +199,12 @@ void setup() {
     //end save
   }
 
-  // Initialize the output variables as outputs
-  pinMode(16, WAKEUP_PULLUP);
-  pinMode(BUILTINLED, OUTPUT);
-  
-  digitalWrite(BUILTINLED, HIGH);
-
   client.setServer(mqtt_server_ip, atoi(mqtt_server_port));    //Configuration de la connexion au serveur MQTT
 
   dht.begin();
 
   // WORK START
-  flash_start();
+  //flash_start();
   if (!client.connected()) {
     reconnect();
   }
@@ -230,10 +230,12 @@ void setup() {
 
   client.publish(mqtt_temp_topic, String(t).c_str(), true);   //Publie la température sur le topic temperature_topic
   client.publish(mqtt_humi_topic, String(h).c_str(), true);      //Et l'humidité
+
+  client.disconnect();
   
-  flash_end();
+  //flash_end();
   //goto deep sleep for 5 minutes
-  ESP.deepSleep(3e8);
+  ESP.deepSleep(5000000, WAKE_RF_DEFAULT);
   // WORK END
 }
 
