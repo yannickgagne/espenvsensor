@@ -86,16 +86,16 @@ void reconnect() {
 }
 
 void setup() {
-  Serial.begin(115200);
-
-  // wait for Serial to initialize
-  //while (!Serial) { }
-  delay(3500);
-
-  // Initialize the output variables as outputs
+  // Initialize the pins
   pinMode(16, WAKEUP_PULLUP);
   pinMode(BUILTINLED, OUTPUT);
   digitalWrite(BUILTINLED, HIGH);  
+
+  Serial.begin(115200);
+
+  // wait for Serial to initialize
+  while (!Serial) { }
+  //delay(2500);
   
   //read configuration from FS json
   Serial.println("mounting FS...");
@@ -204,7 +204,7 @@ void setup() {
   dht.begin();
 
   // WORK START
-  //flash_start();
+  flash_start();
   if (!client.connected()) {
     reconnect();
   }
@@ -233,9 +233,9 @@ void setup() {
 
   client.disconnect();
   
-  //flash_end();
-  //goto deep sleep for 5 minutes
-  ESP.deepSleep(5000000, WAKE_RF_DEFAULT);
+  flash_end();
+  //goto deep sleep for 5 minutes 
+  ESP.deepSleep(5 * 60 * 1000000);
   // WORK END
 }
 
